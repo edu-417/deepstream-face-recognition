@@ -28,8 +28,13 @@ from common.bus_call import bus_call
 
 import pyds
 
+import ctypes
+import numpy as np
+
 
 PGIE_CLASS_ID_PERSON = 0
+
+id_name_dic = {}
 
 
 def osd_sink_pad_buffer_probe(pad,info,u_data):
@@ -71,6 +76,46 @@ def osd_sink_pad_buffer_probe(pad,info,u_data):
             except StopIteration:
                 break
             obj_counter[obj_meta.class_id] += 1
+            l_user_meta = obj_meta.obj_user_meta_list
+
+            while l_user_meta is not None:
+                try:
+                    # Note that l_user_meta.data needs a cast to pyds.NvDsUserMeta
+                    # The casting is done by pyds.NvDsUserMeta.cast()
+                    # The casting also keeps ownership of the underlying memory
+                    # in the C code, so the Python garbage collector will leave
+                    # it alone
+                    user_meta=pyds.NvDsUserMeta.cast(l_user_meta.data)
+                except StopIteration:
+                    break
+
+                tensor_meta = pyds.NvDsInferTensorMeta.cast(user_meta.user_meta_data)
+                layer = pyds.get_nvds_LayerInfo(tensor_meta, 0)
+                ptr = ctypes.cast(pyds.get_ptr(layer.buffer), ctypes.POINTER(ctypes.c_float))
+                v = np.ctypeslib.as_array(ptr, shape=(1,128))
+                v = v / np.linalg.norm(v)
+                # print(v.shape)
+
+                with np.load("embeddings-correct.npz") as embeddings:
+                    best_distance = 2
+                    for key, embedding in embeddings.items():
+                        # print(f"key: {key}")
+                        # print(f"embedding shape: {embedding.shape}")
+                        distance = np.min(np.linalg.norm(embedding - v, axis=1))
+                        # print(f"distance: {distance}")
+
+                        if distance < 1 and distance < best_distance:
+                            id_name_dic[str(obj_meta.object_id)] = key
+                            best_distance = distance
+
+                try:
+                    l_user_meta=l_user_meta.next
+                except StopIteration:
+                    break
+
+            if str(obj_meta.object_id) in id_name_dic.keys():
+                obj_meta.text_params.display_text = id_name_dic[str(obj_meta.object_id)]
+
             try: 
                 l_obj=l_obj.next
             except StopIteration:
