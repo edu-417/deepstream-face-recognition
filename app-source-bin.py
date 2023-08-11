@@ -19,6 +19,7 @@
 
 import sys
 sys.path.append('../')
+import configparser
 import gi
 gi.require_version('Gst', '1.0')
 from gi.repository import GLib, Gst
@@ -258,6 +259,14 @@ def main(args):
     if not pgie:
         sys.stderr.write(" Unable to create pgie \n")
 
+    tracker = Gst.ElementFactory.make("nvtracker", "tracker")
+    if not tracker:
+        sys.stderr.write(" Unable to create tracker \n")
+
+    sgie1 = Gst.ElementFactory.make("nvinfer", "secondary1-nvinference-engine")
+    if not sgie1:
+        sys.stderr.write(" Unable to make sgie1 \n")
+
     # Use convertor to convert from NV12 to RGBA as required by nvosd
     nvvidconv = Gst.ElementFactory.make("nvvideoconvert", "convertor")
     if not nvvidconv:
@@ -290,6 +299,29 @@ def main(args):
     streammux.set_property('batch-size', 1)
     streammux.set_property('batched-push-timeout', 4000000)
     pgie.set_property('config-file-path', "face_detect_pgie_config.txt")
+    sgie1.set_property('config-file-path', "facenet_sgie_config.txt")
+
+    #Set properties of tracker
+    config = configparser.ConfigParser()
+    config.read('tracker_config.txt')
+    config.sections()
+
+    for key in config['tracker']:
+        if key == 'tracker-width' :
+            tracker_width = config.getint('tracker', key)
+            tracker.set_property('tracker-width', tracker_width)
+        if key == 'tracker-height' :
+            tracker_height = config.getint('tracker', key)
+            tracker.set_property('tracker-height', tracker_height)
+        if key == 'gpu-id' :
+            tracker_gpu_id = config.getint('tracker', key)
+            tracker.set_property('gpu_id', tracker_gpu_id)
+        if key == 'll-lib-file' :
+            tracker_ll_lib_file = config.get('tracker', key)
+            tracker.set_property('ll-lib-file', tracker_ll_lib_file)
+        if key == 'll-config-file' :
+            tracker_ll_config_file = config.get('tracker', key)
+            tracker.set_property('ll-config-file', tracker_ll_config_file)
     # Set sync = false to avoid late frame drops at the display-sink
     sink.set_property('sync', False)
 
@@ -302,6 +334,8 @@ def main(args):
     pipeline.add(source_bin)
     pipeline.add(streammux)
     pipeline.add(pgie)
+    pipeline.add(tracker)
+    pipeline.add(sgie1)
     pipeline.add(nvvidconv)
     pipeline.add(nvosd)
     pipeline.add(sink)
@@ -324,7 +358,9 @@ def main(args):
         sys.stderr.write(" Unable to get source pad of sourcebin \n")
     srcpad.link(sinkpad)
     streammux.link(pgie)
-    pgie.link(nvvidconv)
+    pgie.link(tracker)
+    tracker.link(sgie1)
+    sgie1.link(nvvidconv)
     nvvidconv.link(nvosd)
     nvosd.link(sink)
 
