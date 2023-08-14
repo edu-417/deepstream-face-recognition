@@ -22,5 +22,8 @@ RUN pip install ${PYDS_BINDING}
 RUN pip install jupyter jupyterlab
 RUN jupyter lab --generate-config
 RUN ./user_additional_install.sh
+
+RUN apt-get install gobject-introspection gir1.2-gst-rtsp-server-1.0 -y
+
 EXPOSE 8554
 EXPOSE 8888
